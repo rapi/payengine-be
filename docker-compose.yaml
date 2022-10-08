@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_DB: "development"
+      POSTGRES_USER: "payengine"
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uc -d uc_development || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
