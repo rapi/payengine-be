@@ -1,12 +1,17 @@
-import bcrypt from 'bcryptjs';
-import express from 'express';
-import axios from 'axios';
-import dotenv from 'dotenv';
-import { v4 } from 'uuid';
-import knex from 'knex';
+const crypto = require('crypto');
+const express = require('express');
+const axios = require('axios');
+const dotenv = require('dotenv');
+const knex = require('knex');
+const bcrypt = require('bcrypt');
+const { v4 } = require('uuid');
 
 const {
-  SERVER_PORT, PAY_ENGINE_SECRET, PAY_ENGINE_ENDPOINT, DATABASE_MASTER_URL,
+  SERVER_PORT,
+  PAY_ENGINE_SECRET,
+  PAY_ENGINE_ENDPOINT,
+  DATABASE_MASTER_URL,
+  PAY_ENGINE_PUBLIC,
 } = dotenv.config().parsed;
 const app = express();
 app.use(express.json());
@@ -17,42 +22,78 @@ const pg = knex({
   searchPath: ['knex', 'public'],
 });
 
-const client = axios.create({
-  baseURL: PAY_ENGINE_ENDPOINT,
+const payengine = axios.create({
+  baseURL: `${PAY_ENGINE_ENDPOINT}/api`,
   headers: {
     Authorization: `Basic ${PAY_ENGINE_SECRET}`,
   },
 });
 
+app.post('/api/login', async (req, res) => {
+  try {
+    const [{ password }] = await pg('users').where({ email: req.body.email }).select('password');
+    if (!bcrypt.compareSync(req.body.password, password)) {
+      throw new Error();
+    }
+    const token = crypto.randomBytes(64).toString('hex');
+    pg('users')
+      .where({ email: req.body.email })
+      .update({ authorization_token: token });
+
+    res.send({ token });
+  } catch (e) {
+    res.status(400);
+    res.send({ error: 'Wrong email or password' });
+  }
+});
+
 app.post('/api/signup', async (req, res) => {
   try {
-    await pg.insert({
+    // Check if users exists
+    const [{ count }] = await pg('users').where({ email: req.body.email }).count('*');
+    if (count !== '0') {
+      throw new Error('User already exists');
+    }
+
+    // Create new user
+    const password = await bcrypt.hash(req.body.password, 2);
+    console.log(password);
+    const user = {
       ...req.body,
       id: v4(),
-      password: bcrypt.hashSync(req.body.password, v4().replaceAll('-', '')),
-    }).into('users');
+      password,
+    };
+
+    // Create a merchant in payengine
+    const { data: { data } } = await payengine.post('/merchant', {
+      external_id: user.id,
+      email: user.email,
+      name: `${user.first_name} ${user.last_name}`,
+    });
+    user.merchant_id = data.id;
+    user.authorization_token = crypto.randomBytes(64).toString('hex');
+
+    // Insert user in local database
+    await pg.insert(user).into('users');
+
+    res.send({ token: user.authorization_token });
+    // res.send({ token, publicKey: PAY_ENGINE_PUBLIC, merchantId: user.merchant_id });
   } catch (e) {
     res.status(400);
     res.send({ error: e.message });
   }
-
-  // const response=await client.post("/api/merchant",{
-  //     "external_id": "e2d84728-00a2-4b08-a213-2a3692e97ada",
-  //     "email": "test@test.ro",
-  //     "name": "Merchants Name"
-  // })
-  // console.log(response.data)
-  // const merchant_id_hash = crypto.createHmac(
-  //     "sha256",
-  //     "YOUR_SECRET_KEY"
-  // ).update("").digest("hex")
-  // res.send(merchant_id_hash)
 });
 
 app.get('/api/info', async (req, res) => {
+  try {
+    console.log(req.headers.Authorization);
+    // const [{ password }] = await pg('users').where({ authorization_token: req.body.toke }).select('password');
+  } catch (e) {
+    res.status(400);
+    res.send({ error: e.message });
+  }
   res.send('info');
 });
-
 app.listen(SERVER_PORT, () => {
   console.log(`Example app listening on port ${SERVER_PORT}`);
 });
