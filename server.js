@@ -36,7 +36,7 @@ app.post('/api/login', async (req, res) => {
       throw new Error();
     }
     const token = crypto.randomBytes(64).toString('hex');
-    pg('users')
+    await pg('users')
       .where({ email: req.body.email })
       .update({ authorization_token: token });
 
@@ -57,7 +57,6 @@ app.post('/api/signup', async (req, res) => {
 
     // Create new user
     const password = await bcrypt.hash(req.body.password, 2);
-    console.log(password);
     const user = {
       ...req.body,
       id: v4(),
@@ -86,13 +85,25 @@ app.post('/api/signup', async (req, res) => {
 
 app.get('/api/info', async (req, res) => {
   try {
-    console.log(req.headers.Authorization);
-    // const [{ password }] = await pg('users').where({ authorization_token: req.body.toke }).select('password');
+    const token = req.headers.authorization.replace('Basic ', '');
+    const [user] = await pg('users')
+      .where({ authorization_token: token })
+      .select('merchant_id', 'first_name', 'last_name');
+    const hash = crypto.createHmac(
+      'sha256',
+      PAY_ENGINE_SECRET,
+    ).update(user.merchant_id).digest('hex');
+    res.send({
+      merchantId: user.merchant_id,
+      hash,
+      publicKey: PAY_ENGINE_PUBLIC,
+      firstName: user.first_name,
+      lastName: user.last_name,
+    });
   } catch (e) {
     res.status(400);
     res.send({ error: e.message });
   }
-  res.send('info');
 });
 app.listen(SERVER_PORT, () => {
   console.log(`Example app listening on port ${SERVER_PORT}`);
