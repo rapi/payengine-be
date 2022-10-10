@@ -125,6 +125,7 @@ app.get('/api/info', async (req, res) => {
     res.send({ error: e.message });
   }
 });
+
 app.listen(SERVER_PORT, () => {
   console.log(`Example app listening on port ${SERVER_PORT}`);
 });
