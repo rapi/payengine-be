@@ -76,13 +76,25 @@ app.post('/api/signup', async (req, res) => {
     await pg.insert(user).into('users');
 
     res.send({ token: user.authorization_token });
-    // res.send({ token, publicKey: PAY_ENGINE_PUBLIC, merchantId: user.merchant_id });
   } catch (e) {
     res.status(400);
     res.send({ error: e.message });
   }
 });
 
+app.get('/api/validate', async (req, res) => {
+  const { data } = await payengine.post('/merchant/4e8bce15-deb3-4c6e-9b7d-cd5d8dede532/submit', {
+    status: 'submitted_to_pe',
+  });
+  res.send(data);
+});
+app.get('/api/payment-link', async (req, res) => {
+  const { data } = await payengine.post('/payment-link', {
+    merchantId: '4e8bce15-deb3-4c6e-9b7d-cd5d8dede532',
+    data: { amount: 10 },
+  });
+  res.send(data);
+});
 app.get('/api/info', async (req, res) => {
   try {
     const token = req.headers.authorization.replace('Basic ', '');
